@@ -51,14 +51,28 @@ def client_tag():
             }
         }
     ]
+
+    # Pipeline adicional: buscar documentos cuyo array 'tags' contiene la entrada "syllabus"
+    # y obtener el listado distinct de las otras tags (excluyendo la propia entrada "syllabus")
+    # Pipeline: no hacemos distinct aquí, solo extraemos las tags (puede haber duplicados)
+    # Obtener las 10 tags (distintas de 'syllabus') con menos apariciones en los documentos de syllabus
+    pipeline_syllabus_distinct = [
+        {"$match": {"tags": "syllabus"}},          # sólo documentos que contienen la marca 'syllabus'
+        {"$unwind": {"path": "$tags"}},           # desplegamos el array de tags
+        {"$match": {"tags": {"$ne": "syllabus"}}}, # excluimos la propia marca
+        {"$group": {"_id": "$tags", "count": {"$sum": 1}}},  # contamos apariciones por tag
+        {"$sort": {"count": 1, "_id": 1}},         # orden ascendente por cuenta (menos usadas primero)
+        {"$limit": 5}                             # quedarnos con las 10 menos usadas
+    ]
+
+
+    # Ejecutamos el pipeline adicional y guardamos la lista de tags únicas encontradas
+    tags_menos_grabadas = [doc['_id'] for doc in syllabus.aggregate(pipeline_syllabus_distinct)]
     tags_suerte = syllabus.aggregate(pipeline)
 
     # TODO - Es una chapuza ... rehacer en un futuro con una única consulta a MongoDB
     todos_tags = syllabus.distinct("tags",{})
     tags_audios_menos_grabadas = audio.distinct("texto.tag", {"texto.tipo": "syllabus"})
-    tags_menos_grabadas = list(set(todos_tags) - set(tags_audios_menos_grabadas))
-    patron = re.compile(r"^\d{1,3}[A-Za-z]{1,2}\d$")
-    tags_menos_grabadas = [tag for tag in tags_menos_grabadas if patron.match(tag)]
 
     if tags_menos_grabadas and len(tags_menos_grabadas) >= 5:
         tags_menos_grabadas = sample(tags_menos_grabadas, 5)
